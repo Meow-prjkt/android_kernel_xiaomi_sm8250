@@ -232,18 +232,28 @@ static inline unsigned long apply_dvfs_headroom(unsigned long util, int cpu)
 {
 	unsigned long capacity = capacity_orig_of(cpu);
 	unsigned long delta, headroom;
+	unsigned long max_boost, final_hr;
 
 	if (util >= capacity)
-		return util;
-        /*
-        * Quadratic taper the boosting at the top end as these are expensive
-        * and we don't need that much of a big headroom as we approach max
-        * capacity
-        */
-	delta = capacity - util;
-	headroom = ((delta * delta) >> 12);
+		return capacity;
 
-	return util + headroom;
+	/* Quadratic taper */
+	delta = capacity - util;
+	headroom = (delta * delta) / (6 * 1024);
+	if (!cpumask_test_cpu(cpu, cpu_prime_mask))
+		headroom *= 2;
+
+	/* Headroom absolute cap: 15% */
+	max_boost = capacity * 15 / 100;
+	if (headroom > max_boost)
+		headroom = max_boost;
+
+	/* Cap it to 50% of util */
+	if (headroom > util / 2)
+		headroom = util / 2;
+
+	final_hr = util + headroom;
+	return min(final_hr, capacity);
 }
 
 unsigned long sugov_effective_cpu_perf(int cpu, unsigned long actual,
